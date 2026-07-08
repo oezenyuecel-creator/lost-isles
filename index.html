@@ -754,11 +754,11 @@ function addSailToRaft(){ if(!raft)return; if(raft.g.userData.sailUp)return; raf
  *  CAMERA controller
  * ============================================================ */
 const cam={yaw:0,pitch:0.34,dist:11,tgt:new THREE.Vector3()};
+let inputFwd=0; // forward input magnitude (0..1) — gates camera auto-follow so pure strafing doesn't spin the view
 function updateCamera(dt){
   const p=player.onRaft&&raft?raft.g.position:player.pos;
-  const desiredYaw = player.speed>0.5 && !lookActive ? player.yaw : cam.yaw;
-  // gentle auto-follow of movement yaw
-  if(player.speed>0.5 && !lookActive){ cam.yaw=lerpAngle(cam.yaw,player.yaw,dt*1.4); }
+  // auto-follow camera behind player only when moving forward-ish (not while pure strafing left/right)
+  if((inputFwd>0.25||player.onRaft) && player.speed>0.5 && !lookActive){ cam.yaw=lerpAngle(cam.yaw,player.yaw,dt*1.6); }
   cam.tgt.lerp(new THREE.Vector3(p.x,(player.diving?player.pos.y:Math.max(p.y,0))+2.2,p.z),clamp(dt*8,0,1));
   const cp=Math.cos(cam.pitch),sp=Math.sin(cam.pitch);
   const cx=Math.sin(cam.yaw)*cp, cz=Math.cos(cam.yaw)*cp;
@@ -1430,7 +1430,7 @@ function updateRaft(dt,ix,iz,mag){
   const cr=new THREE.Vector3(Math.cos(cy),0,-Math.sin(cy));
   const move=new THREE.Vector3().addScaledVector(cf,-iz).addScaledVector(cr,ix);
   const spd=(raft.g.userData.sailUp?7.5:4.8);
-  if(move.lengthSq()>0){move.normalize();raft.heading=Math.atan2(move.x,move.z);raft.vx=move.x*spd;raft.vz=move.z*spd;player.speed=spd;}
+  if(move.lengthSq()>0){move.normalize();raft.heading=Math.atan2(move.x,move.z);player.yaw=raft.heading;raft.vx=move.x*spd;raft.vz=move.z*spd;player.speed=spd;}
   else{raft.vx*=0.94;raft.vz*=0.94;player.speed=0;}
   raft.g.position.x+=raft.vx*dt; raft.g.position.z+=raft.vz*dt;
   raft.g.position.y=Math.sin(now*1.5)*0.3;
@@ -1587,6 +1587,7 @@ function updateWrapped(dt){
   if(keys.KeyA||keys.ArrowLeft)ix=-1;if(keys.KeyD||keys.ArrowRight)ix=1;
   if(keys.ShiftLeft)sprinting=true;else if(!$('#bSprint').classList.contains('on'))sprinting=false;
   const mag=Math.min(1,Math.hypot(ix,iz));
+  inputFwd=Math.max(0,-iz);
   if(player.onRaft)updateRaft(dt,ix,iz,mag);
   else if(player.diving)updateDiveMove(dt,ix,iz,mag);
   else updatePlayerMove(dt,ix,iz,mag);
@@ -1624,18 +1625,40 @@ function runIntro(then){
   const gsun=new THREE.DirectionalLight(0xffd0a0,2);gsun.position.set(-50,40,-30);introScene.add(gsun);introScene.add(new THREE.HemisphereLight(0xffd0a0,0x224466,1));
   introWater=new THREE.Mesh(new THREE.PlaneGeometry(3000,3000,60,60),new THREE.MeshStandardMaterial({color:0x1a6a8a,roughness:.3,metalness:.2,flatShading:true}));introWater.rotation.x=-Math.PI/2;introWater.position.y=-6;introScene.add(introWater);
   const sd=new THREE.Mesh(new THREE.CircleGeometry(120,24),new THREE.MeshBasicMaterial({color:0xfff0c0}));sd.position.set(-140,60,-500);introScene.add(sd);
-  // plane
+  // plane (nose points toward -x, its flight direction)
   introPlane=new THREE.Group();
-  const bodyM=new THREE.MeshStandardMaterial({color:0xe8eef2,roughness:.5,metalness:.3,flatShading:true});
-  const fus=new THREE.Mesh(new THREE.CylinderGeometry(2,2.4,16,12),bodyM);fus.rotation.z=Math.PI/2;introPlane.add(fus);
-  const wing=new THREE.Mesh(new THREE.BoxGeometry(3,.4,16),bodyM);wing.position.y=-.2;introPlane.add(wing);
-  const tail=new THREE.Mesh(new THREE.BoxGeometry(2.4,3.4,.4),bodyM);tail.position.set(-7.5,1.4,0);introPlane.add(tail);
-  const smoke=new THREE.Mesh(new THREE.SphereGeometry(1.6,8,6),new THREE.MeshBasicMaterial({color:0x333,transparent:true,opacity:.6}));smoke.position.set(-9,0,0);introPlane.add(smoke);introPlane.userData.smoke=smoke;
+  const bodyM=new THREE.MeshStandardMaterial({color:0xeef3f7,roughness:.45,metalness:.25,flatShading:true});
+  const accentM=new THREE.MeshStandardMaterial({color:0xe23b4e,roughness:.5,flatShading:true});
+  const glassM=new THREE.MeshStandardMaterial({color:0x16283a,roughness:.15,metalness:.7,flatShading:true});
+  const darkM=new THREE.MeshStandardMaterial({color:0x3a4048,roughness:.5,metalness:.5,flatShading:true});
+  const fus=new THREE.Mesh(new THREE.CylinderGeometry(1.5,1.6,15,14),bodyM);fus.rotation.z=Math.PI/2;introPlane.add(fus);
+  const nose=new THREE.Mesh(new THREE.ConeGeometry(1.5,3.2,14),bodyM);nose.rotation.z=Math.PI/2;nose.position.x=-9.1;introPlane.add(nose);
+  const tailc=new THREE.Mesh(new THREE.ConeGeometry(1.5,2.6,14),bodyM);tailc.rotation.z=-Math.PI/2;tailc.position.x=8.8;introPlane.add(tailc);
+  const stripe=new THREE.Mesh(new THREE.CylinderGeometry(1.53,1.63,15,14,1,true),accentM);stripe.rotation.z=Math.PI/2;stripe.scale.y=.3;stripe.position.y=.1;introPlane.add(stripe);
+  const cockpit=new THREE.Mesh(new THREE.SphereGeometry(1.05,10,8),glassM);cockpit.scale.set(1.8,.75,.95);cockpit.position.set(-6.4,.55,0);introPlane.add(cockpit);
+  const wing=new THREE.Mesh(new THREE.BoxGeometry(4.6,.32,23),bodyM);wing.position.set(1,-.35,0);introPlane.add(wing);
+  const wtipL=new THREE.Mesh(new THREE.BoxGeometry(4.6,.34,1.4),accentM);wtipL.position.set(1,-.35,11.3);introPlane.add(wtipL);
+  const wtipR=wtipL.clone();wtipR.position.z=-11.3;introPlane.add(wtipR);
+  for(const z of[-6,6]){const eng=new THREE.Mesh(new THREE.CylinderGeometry(.8,.8,3.4,10),darkM);eng.rotation.z=Math.PI/2;eng.position.set(.6,-1.35,z);introPlane.add(eng);const intake=new THREE.Mesh(new THREE.CircleGeometry(.72,10),glassM);intake.rotation.y=-Math.PI/2;intake.position.set(-1.15,-1.35,z);introPlane.add(intake);}
+  const fin=new THREE.Mesh(new THREE.BoxGeometry(2.8,3.4,.35),bodyM);fin.position.set(7.7,1.9,0);introPlane.add(fin);
+  const finAcc=new THREE.Mesh(new THREE.BoxGeometry(1.7,1.9,.4),accentM);finAcc.position.set(8.1,2.5,0);introPlane.add(finAcc);
+  const stab=new THREE.Mesh(new THREE.BoxGeometry(2.6,.28,8),bodyM);stab.position.set(7.7,.4,0);introPlane.add(stab);
+  const smoke=new THREE.Mesh(new THREE.SphereGeometry(1.6,8,6),new THREE.MeshBasicMaterial({color:0x333,transparent:true,opacity:.6}));smoke.position.set(9.6,.4,0);introPlane.add(smoke);introPlane.userData.smoke=smoke;
   introPlane.position.set(30,40,-40);introScene.add(introPlane);
-  // small raft w/ figure (for later shots)
+  // small raft + a recognizable sitting survivor (for later shots)
   introRaft2=new THREE.Group();
-  const plank=new THREE.Mesh(new THREE.BoxGeometry(4,.4,2.4),new THREE.MeshStandardMaterial({color:0x9a6a3a,flatShading:true}));introRaft2.add(plank);
-  const fig=new THREE.Mesh(new THREE.CapsuleGeometry(.5,1.2,4,6),new THREE.MeshStandardMaterial({color:0xff7a4d,flatShading:true}));fig.rotation.z=Math.PI/2;fig.position.y=.6;introRaft2.add(fig);
+  const woodM=new THREE.MeshStandardMaterial({color:0x9a6a3a,roughness:.9,flatShading:true});
+  for(let i=0;i<4;i++){const log=new THREE.Mesh(new THREE.CylinderGeometry(.32,.32,4.6,8),woodM);log.rotation.x=Math.PI/2;log.position.set(0,0,-1.35+i*0.9);introRaft2.add(log);}
+  const gSkin=new THREE.MeshStandardMaterial({color:0xe8b48a,flatShading:true});
+  const gShirt=new THREE.MeshStandardMaterial({color:0xff7a4d,flatShading:true});
+  const survivor=new THREE.Group();
+  const hips=new THREE.Mesh(new THREE.BoxGeometry(.95,.5,.75),new THREE.MeshStandardMaterial({color:0x3a5a86,flatShading:true}));hips.position.y=.55;survivor.add(hips);
+  const torso=new THREE.Mesh(new THREE.BoxGeometry(.9,1,.6),gShirt);torso.position.set(-.18,1.15,0);torso.rotation.z=.32;survivor.add(torso);
+  const head=new THREE.Mesh(new THREE.BoxGeometry(.58,.62,.58),gSkin);head.position.set(-.42,1.9,0);survivor.add(head);
+  const hair=new THREE.Mesh(new THREE.BoxGeometry(.63,.24,.63),new THREE.MeshStandardMaterial({color:0x2a1c12,flatShading:true}));hair.position.set(-.42,2.18,0);survivor.add(hair);
+  for(const s of[-1,1]){const leg=new THREE.Mesh(new THREE.BoxGeometry(1.6,.32,.32),gSkin);leg.position.set(.78,.4,s*.26);survivor.add(leg);}
+  const arm=new THREE.Mesh(new THREE.BoxGeometry(.26,.95,.26),gSkin);arm.position.set(.15,.95,.5);arm.rotation.z=.6;survivor.add(arm);
+  survivor.position.y=.2;introRaft2.add(survivor);
   introRaft2.position.set(0,-5,20);introRaft2.visible=false;introScene.add(introRaft2);
 
   let t=0,phase=0,skip=false;
