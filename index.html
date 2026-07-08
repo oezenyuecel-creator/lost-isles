@@ -539,6 +539,7 @@ function decorateIsland(is){
   scatter(is,'leaf',Math.round(9*mult),()=>leafPileMesh(),0.4,is.height*0.6);
   scatter(is,'shell',Math.round(8*mult),()=>shellMesh(),-0.2,0.9);
   scatter(is,'crab',Math.round(5*mult),()=>crabMesh(),-0.2,1.1);
+  scatter(is,'bush',Math.round(4*mult),()=>vineMesh(),0.8,is.height*0.7); // Lianen auf jeder Insel (auch Start)
   // bushes / banana
   const nB=Math.round(8*mult);
   for(let i=0;i<nB;i++){
@@ -864,7 +865,7 @@ function checkQuests(){
  *  CRAFTING
  * ============================================================ */
 const RECIPES=[
-  {id:'rope',cat:'tool',i:'🪢',n:'Seil',d:'Aus Lianen & Blättern gedreht. Basis für fast alles.',cost:{leaf:2,vine:1},out:()=>give('rope',1)},
+  {id:'rope',cat:'tool',i:'🪢',n:'Seil',d:'Aus Palmblättern gedreht (Lianen gehen auch). Basis für fast alles.',cost:{leaf:3},out:()=>give('rope',1)},
   {id:'axe',cat:'tool',i:'🪓',n:'Steinbeil',d:'Fällt Holz schneller — mehr Ertrag beim Sammeln.',cost:{wood:3,stone:2,rope:1},once:true,out:()=>{S.tool.axe=true;}},
   {id:'spear',cat:'tool',i:'🔱',n:'Speer',d:'Fange Fische & Krabben, halte Haie kurz auf Abstand.',cost:{wood:2,stone:1,rope:1},once:true,out:()=>{S.tool.spear=true;}},
   {id:'rod',cat:'tool',i:'🎣',n:'Angel',d:'Ruhig am Ufer angeln — zuverlässiger Fischfang.',cost:{wood:2,rope:2},once:true,out:()=>{S.tool.rod=true;}},
@@ -874,7 +875,7 @@ const RECIPES=[
   {id:'campfire',cat:'survival',i:'🔥',n:'Lagerfeuer',d:'Wärme, Licht und zum Kochen von Fisch.',cost:{wood:5,stone:3},once:true,out:()=>{S.crafted.campfire=true; placeCampfire();}},
   {id:'cook',cat:'survival',i:'🍢',n:'Fisch braten',d:'Roher Fisch → gebratener Fisch (stillt Hunger).',cost:{fish:1},need:()=>S.crafted.campfire,out:()=>give('cookedfish',1)},
   {id:'waterfilter',cat:'survival',i:'⏳',n:'Wasserfilter',d:'Reinigt Salzwasser — Trinkwasser überall.',cost:{stone:2,leaf:3,shell:2},once:true,out:()=>{S.crafted.waterfilter=true;give('water',3);}},
-  {id:'shelter',cat:'survival',i:'⛺',n:'Schlafplatz',d:'Ein Ort zum Ausruhen. Setzt Respawn-Punkt.',cost:{wood:6,leaf:5,rope:2},once:true,out:()=>{S.crafted.shelter=true;}},
+  {id:'shelter',cat:'survival',i:'⛺',n:'Schlafplatz',d:'Ein Ort zum Ausruhen. Lianen halten das Dach. Setzt Respawn-Punkt.',cost:{wood:6,leaf:4,vine:2,rope:2},once:true,out:()=>{S.crafted.shelter=true;}},
 
   {id:'raft',cat:'boat',i:'🛶',n:'Floß',d:'Dein Ticket aufs offene Meer. Erreiche neue Inseln!',cost:{wood:8,rope:4},once:true,gate:()=>S.tool.axe,out:()=>{S.unlocked.raft=true;}},
   {id:'sail',cat:'boat',i:'⛵',n:'Segel',d:'Schneller & weiter segeln. Rüstet dein Floß auf.',cost:{leaf:6,rope:3,cloth:1},once:true,gate:()=>S.unlocked.raft,out:()=>{S.crafted.sail=true;addSailToRaft();}},
@@ -1365,43 +1366,37 @@ function update(dt){
 let saveTimer=6;
 
 function updatePlayerMove(dt,ix,iz,mag){
-  // camera-relative direction
   const cy=cam.yaw;
-  const fx2=Math.sin(cy),fz2=Math.cos(cy);
-  let wx=0,wz=0;
-  if(mag>0.08){ wx=(ix*Math.cos(cy)+iz*fx2); wz=(-ix*Math.sin(cy)+iz*fz2); const l=Math.hypot(wx,wz)||1;wx/=l;wz/=l; player.yaw=Math.atan2(wx,wz)+Math.PI; }
-  // wait — recompute properly
+  const SWIM=-0.6; // depth at which we switch from wading to swimming
+  let gh=groundHeight(player.pos.x,player.pos.z);
+  let swimming = gh<SWIM;
+  player.inWater=swimming;
+  // ---- horizontal ----
   if(mag>0.08){
-    // forward = -iz along camera forward; right = ix along camera right
-    const cf=new THREE.Vector3(Math.sin(cy),0,Math.cos(cy)); // camera forward (toward target)
-    const cr=new THREE.Vector3(Math.cos(cy),0,-Math.sin(cy));
+    const cf=new THREE.Vector3(Math.sin(cy),0,Math.cos(cy)); // camera forward
+    const cr=new THREE.Vector3(Math.cos(cy),0,-Math.sin(cy)); // camera right
     const move=new THREE.Vector3().addScaledVector(cf,-iz).addScaledVector(cr,ix);
     move.y=0; if(move.lengthSq()>0)move.normalize();
     player.yaw=Math.atan2(move.x,move.z);
-    let sp=(player.inWater?4.6:6.2)*(sprinting&&needs.energy>0.05&&!player.inWater?1.7:1)*mag;
+    const sp=(swimming?4.4:6.2)*(sprinting&&needs.energy>0.05&&!swimming?1.7:1)*mag;
     player.speed=sp;
     player.pos.x+=move.x*sp*dt; player.pos.z+=move.z*sp*dt;
-  } else player.speed=lerp(player.speed,0,dt*10);
-
-  const gh=groundHeight(player.pos.x,player.pos.z);
-  const water0=0;
-  player.inWater=gh<water0-0.4 && !player.diving;
-  // vertical
-  if(player.diving){
-    // handled in dive
-  } else if(gh>=water0-0.4){
-    // on land
-    player.jumpV-=24*dt;
-    player.pos.y+=player.jumpV*dt;
+  } else player.speed=lerp(player.speed,0,clamp(dt*10,0,1));
+  // recompute ground after moving so the vertical state matches the new position
+  gh=groundHeight(player.pos.x,player.pos.z);
+  swimming = gh<SWIM;
+  player.inWater=swimming;
+  // ---- vertical ----
+  if(!swimming){
+    // walking / wading — gravity, land on terrain
+    player.jumpV-=24*dt; player.pos.y+=player.jumpV*dt;
     if(player.pos.y<=gh){player.pos.y=gh;player.jumpV=0;player.onGround=true;} else player.onGround=false;
-    player.inWater=false;
   } else {
-    // swimming at surface
-    player.jumpV-=14*dt; player.pos.y+=player.jumpV*dt;
-    if(player.pos.y<=0){player.pos.y=0;player.jumpV=0;}
-    player.onGround=false;
-    // dive
-    if(diveHold){ startDive(); }
+    // swimming at the surface — smooth buoyancy toward a gentle wave bob (no gravity popping)
+    player.jumpV=0; player.onGround=false;
+    const bob=Math.sin(now*1.4+player.pos.x*0.1)*0.13;
+    player.pos.y=lerp(player.pos.y,bob,clamp(dt*5,0,1));
+    if(diveHold) startDive();
   }
   player.island=nearestIsland(player.pos.x,player.pos.z).is.id;
   player.mesh.position.set(player.pos.x,player.pos.y,player.pos.z);
