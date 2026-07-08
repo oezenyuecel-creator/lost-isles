@@ -1374,7 +1374,7 @@ function updatePlayerMove(dt,ix,iz,mag){
   // ---- horizontal ----
   if(mag>0.08){
     const cf=new THREE.Vector3(Math.sin(cy),0,Math.cos(cy)); // camera forward
-    const cr=new THREE.Vector3(Math.cos(cy),0,-Math.sin(cy)); // camera right
+    const cr=new THREE.Vector3(-Math.cos(cy),0,Math.sin(cy)); // camera right
     const move=new THREE.Vector3().addScaledVector(cf,-iz).addScaledVector(cr,ix);
     move.y=0; if(move.lengthSq()>0)move.normalize();
     player.yaw=Math.atan2(move.x,move.z);
@@ -1408,7 +1408,7 @@ function updDiveFx(){ $('#diveOverlay').style.opacity=player.diving?'1':'0'; }
 function updateDiveMove(dt,ix,iz,mag){
   const cy=cam.yaw;
   const cf=new THREE.Vector3(Math.sin(cy),0,Math.cos(cy));
-  const cr=new THREE.Vector3(Math.cos(cy),0,-Math.sin(cy));
+  const cr=new THREE.Vector3(-Math.cos(cy),0,Math.sin(cy));
   const move=new THREE.Vector3().addScaledVector(cf,-iz).addScaledVector(cr,ix);
   if(move.lengthSq()>0){move.normalize();player.yaw=Math.atan2(move.x,move.z);player.pos.x+=move.x*4.4*dt;player.pos.z+=move.z*4.4*dt;player.speed=4;}else player.speed=0;
   // depth control
@@ -1422,7 +1422,7 @@ function updateDiveMove(dt,ix,iz,mag){
 function updateRaft(dt,ix,iz,mag){
   const cy=cam.yaw;
   const cf=new THREE.Vector3(Math.sin(cy),0,Math.cos(cy));
-  const cr=new THREE.Vector3(Math.cos(cy),0,-Math.sin(cy));
+  const cr=new THREE.Vector3(-Math.cos(cy),0,Math.sin(cy));
   const move=new THREE.Vector3().addScaledVector(cf,-iz).addScaledVector(cr,ix);
   const spd=(raft.g.userData.sailUp?7.5:4.8);
   if(move.lengthSq()>0){move.normalize();raft.heading=Math.atan2(move.x,move.z);player.yaw=raft.heading;raft.vx=move.x*spd;raft.vz=move.z*spd;player.speed=spd;}
